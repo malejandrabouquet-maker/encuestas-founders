@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- PORTAL-ENCUESTAS-V1-1-0 -->
+<!-- PORTAL-ENCUESTAS-V1-2-0 -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -286,7 +286,6 @@ td .pillbtn{background:none;border:0;padding:0;font-weight:600;text-decoration:u
     </div>
     <div class="cal-tools">
       <div class="filters">
-        <label>Consultor<select id="f-coach"></select></label>
         <label>Buscar cliente<input id="f-q" type="search" placeholder="Nombre o email" autocomplete="off"></label>
       </div>
     </div>
@@ -832,7 +831,7 @@ function gLoc(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* nada */
 function lLoc(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
 
 /* ---------- estado ---------- */
-var S = { tab: "cal", view: "week", cursor: null, coach: "", q: "", stat: "mes", sheet: "av", usuario: "" };
+var S = { tab: "cal", view: "week", cursor: null, q: "", stat: "mes", sheet: "av", usuario: "" };
 var E = null, MO = null, EVM = {}, FU = null, PLA = "", HIST = [];
 var pw = "", ultimaCarga = 0, cargando = false, enCurso = 0, M = null, errorFijo = "", errorAccion = "";
 var intentadas = {};
@@ -961,7 +960,6 @@ function pintarUsuario() { $("usuario-btn").textContent = S.usuario ? "Usuario: 
 function ocultoEv(ev) { var c = MO.clientes[ev.i]; return !ev.rec && (c.etapa === "No respondió" || c.etapa === "Abandono"); }
 function visibleEv(ev) {
   var c = MO.clientes[ev.i];
-  if (S.coach && (c.consultor || "Sin asignar") !== S.coach) return false;
   if (S.q) { var q = S.q.toLowerCase(); if ((c.nombre + " " + c.email).toLowerCase().indexOf(q) < 0) return false; }
   return true;
 }
@@ -971,19 +969,9 @@ function chip(ev, mini, extra) {
   var enviados = ev.avisos.filter(Boolean).length;
   var dots = '<span class="dots" aria-label="Avisos enviados: ' + enviados + ' de 3">' + [0, 1, 2].map(function (j) { return '<i class="' + (ev.avisos[j] ? "on" : "") + '"></i>'; }).join("") + "</span>";
   if (mini) return '<button type="button" class="chip mini s-' + st + '" data-act="open-ev" data-ev="' + ev.id + '" title="' + esc(c.nombre) + ", Encuesta " + ev.n + ": " + ROT[st] + '"><span class="chip-top"><i class="glyph"></i><b>E' + ev.n + '</b><span class="nm">' + esc(c.nombre) + "</span></span></button>";
-  return '<button type="button" class="chip s-' + st + '" data-act="open-ev" data-ev="' + ev.id + '"><span class="chip-top"><i class="glyph"></i><b>E' + ev.n + '</b><span class="nm">' + esc(c.nombre) + '</span></span><span class="chip-sub"><span>' + esc(c.consultor || "Sin asignar") + "</span>" + dots + (tarde ? '<span class="tag">Atrasada</span>' : "") + (extra ? "<span>" + esc(extra) + "</span>" : "") + "</span></button>";
+  return '<button type="button" class="chip s-' + st + '" data-act="open-ev" data-ev="' + ev.id + '"><span class="chip-top"><i class="glyph"></i><b>E' + ev.n + '</b><span class="nm">' + esc(c.nombre) + '</span></span><span class="chip-sub">' + dots + (tarde ? '<span class="tag">Atrasada</span>' : "") + (extra ? "<span>" + esc(extra) + "</span>" : "") + "</span></button>";
 }
 function renderCal() {
-  var coaches = {};
-  MO.clientes.forEach(function (c) { if (c.consultor) coaches[c.consultor] = 1; });
-  var sel = $("f-coach");
-  var nombres = Object.keys(coaches).sort();
-  var firma = nombres.join("|");
-  if (sel.dataset.firma !== firma) {
-    sel.innerHTML = '<option value="">Todos</option>' + nombres.map(function (n) { return "<option>" + esc(n) + "</option>"; }).join("") + "<option>Sin asignar</option>";
-    sel.dataset.firma = firma;
-    sel.value = S.coach;
-  }
   document.querySelectorAll("[data-act=view]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.view === S.view)); });
 
   var desde, hasta, semanas = [], html = "";
@@ -1096,7 +1084,7 @@ function modalEv(ev) {
   var prog = c.cortes ? c.cortes.etiqueta + ", " + c.cortes.dias + " días" : esc(c.programa || "(vacío)");
   return '<div class="mhd"><div><span class="pill s-' + st + '"><i class="glyph"></i>' + ROT[st] + '</span><h2 id="m-title">Encuesta ' + ev.n + " de " + esc(c.nombre) + '</h2></div><div class="acts">' + (M.back ? '<button type="button" class="btn small" data-act="back">Volver al día</button>' : "") + '<button type="button" class="btn small" data-act="close">Cerrar</button></div></div>' +
     banner +
-    '<div class="grid2"><div><span>Email</span><b>' + (c.email ? esc(c.email) : "Sin email en el Excel") + "</b></div><div><span>Consultor</span><b>" + esc(c.consultor || "Sin asignar") + "</b></div><div><span>Programa</span><b>" + prog + "</b></div><div><span>Fecha de ingreso</span><b>" + fmtL(c.ingreso) + "</b></div><div><span>Fecha calculada (día " + ev.dia + ")</span><b>" + fmtL(ev.calc) + "</b></div><div><span>Se envía el</span><b>" + fmtL(ev.shown) + "</b>" + (porque ? "<span>" + porque + "</span>" : "") + "</div></div>" +
+    '<div class="grid2"><div><span>Email</span><b>' + (c.email ? esc(c.email) : "Sin email en el Excel") + "</b></div><div><span>Programa</span><b>" + prog + "</b></div><div><span>Fecha de ingreso</span><b>" + fmtL(c.ingreso) + "</b></div><div><span>Fecha calculada (día " + ev.dia + ")</span><b>" + fmtL(ev.calc) + "</b></div><div><span>Se envía el</span><b>" + fmtL(ev.shown) + "</b>" + (porque ? "<span>" + porque + "</span>" : "") + "</div></div>" +
     '<div class="msec"><h3>Avisos y recepción</h3>' + filas + filaRec + "</div>" +
     '<div class="msec"><h3>Pipeline “Encuestas de Satisfacción” en GHL</h3>' + caja + "</div>" +
     '<div class="msec"><h3>Nota de esta encuesta</h3><textarea id="note-input" aria-label="Nota de esta encuesta" placeholder="Por ejemplo: pidió que se la mandemos por WhatsApp">' + esc(ev.nota) + '</textarea><div class="acts" style="margin-top:8px"><button type="button" class="btn small primary" data-act="save-note" data-ev="' + ev.id + '">Guardar nota</button>' + (ev.notaTs ? '<span class="mut" style="font-size:13px">Guardada el ' + esc(ev.notaTs) + (ev.notaUser ? " por " + esc(ev.notaUser) : "") + "</span>" : "") + "</div></div>" +
@@ -1160,8 +1148,8 @@ function accionDeshacerAviso(ev, j) {
 }
 function accionRecibida(ev) {
   var c = MO.clientes[ev.i];
-  ejecutar("marcarRecibida", { clave: c.clave, cliente: c.nombre, email: c.email, enc: ev.n, consultor: c.consultor || "", fecha: MO.hoy, debia: ev.shown, etapa: c.etapa || "" }, function () {
-    E.recibidas.push({ fecha: fmtD(MO.hoy), clave: c.clave, cliente: c.nombre, email: c.email, enc: ev.n, consultor: c.consultor || "", debia: fmtD(ev.shown), dias: C.difDias(MO.hoy, ev.shown), etapa: c.etapa || "", origen: "Marcada a mano", usuario: S.usuario, estado: "Vigente", id: "tmp" });
+  ejecutar("marcarRecibida", { clave: c.clave, cliente: c.nombre, email: c.email, enc: ev.n, fecha: MO.hoy, debia: ev.shown, etapa: c.etapa || "" }, function () {
+    E.recibidas.push({ fecha: fmtD(MO.hoy), clave: c.clave, cliente: c.nombre, email: c.email, enc: ev.n, consultor: "", debia: fmtD(ev.shown), dias: C.difDias(MO.hoy, ev.shown), etapa: c.etapa || "", origen: "Marcada a mano", usuario: S.usuario, estado: "Vigente", id: "tmp" });
   }, "Recibida guardada en la planilla");
 }
 function accionDeshacerRec(ev) {
@@ -1200,7 +1188,7 @@ function barra(p) { return p == null ? "" : ' style="background:linear-gradient(
 function renderEst() {
   var g = C.estadisticas(MO, S.stat);
   var cur = C.estadisticas(MO, "mes").filter(function (x) { return x.ahora; })[0] || { d: 0, env: 0, rec: 0 };
-  var etiquetas = { mes: "Período", semana: "Semana (lunes a viernes)", consultor: "Consultor", encuesta: "Encuesta" };
+  var etiquetas = { mes: "Período", semana: "Semana (lunes a viernes)", encuesta: "Encuesta" };
   var tot = { d: 0, env: 0, rec: 0, sin: 0, pv: 0, blq: 0 };
   var filas = g.map(function (x, i) {
     ["d", "env", "rec", "sin", "pv", "blq"].forEach(function (k) { tot[k] += x[k]; });
@@ -1212,7 +1200,7 @@ function renderEst() {
   var mes = cap(MESN[+MO.hoy.slice(5, 7) - 1]) + " " + MO.hoy.slice(0, 4);
   var pc = C.porcentaje(cur.rec, cur.env);
   $("tab-est").innerHTML = '<div class="kpis"><div class="kpi"><div class="n">' + cur.d + '</div><div class="l">Debían enviarse en ' + mes + '</div></div><div class="kpi"><div class="n">' + cur.env + '</div><div class="l">Enviadas</div></div><div class="kpi"><div class="n">' + cur.rec + '</div><div class="l">Recibidas</div></div><div class="kpi"><div class="n">' + (pc == null ? "-" : pc + " %") + '</div><div class="l">De las enviadas, ya respondieron</div></div></div>' +
-    '<div class="tools"><div class="seg" role="group" aria-label="Agrupar por">' + [["mes", "Por mes"], ["semana", "Por semana"], ["consultor", "Por consultor"], ["encuesta", "Por encuesta"]].map(function (o) { return '<button type="button" data-act="stat" data-m="' + o[0] + '" aria-pressed="' + (S.stat === o[0]) + '">' + o[1] + "</button>"; }).join("") + "</div></div>" +
+    '<div class="tools"><div class="seg" role="group" aria-label="Agrupar por">' + [["mes", "Por mes"], ["semana", "Por semana"], ["encuesta", "Por encuesta"]].map(function (o) { return '<button type="button" data-act="stat" data-m="' + o[0] + '" aria-pressed="' + (S.stat === o[0]) + '">' + o[1] + "</button>"; }).join("") + "</div></div>" +
     '<div class="scroll tall"><table><thead><tr><th class="rn"></th><th>' + etiquetas[S.stat] + '</th><th class="num">Debían enviarse</th><th class="num">Enviadas</th><th class="num">Recibidas</th><th class="num">Sin enviar</th><th class="num">Por vencer</th><th class="num">Bloqueadas</th><th class="num">% enviadas</th><th class="num">% recibidas</th></tr></thead><tbody>' + filas + fin + "</tbody></table></div>" +
     '<p class="foot">Cada encuesta se cuenta en el período de su fecha de envío (ya corrida a día hábil). Se cuentan desde la fecha de arranque (' + fmtD(MO.config.arranque) + "). Sin enviar: ya vencieron y no tienen aviso. Por vencer: todavía no llegó su fecha. Bloqueadas: clientes en Pausa por impago, No respondió o Abandono sin aviso. % enviadas: enviadas sobre las que ya vencieron y se podían enviar. % recibidas: recibidas sobre enviadas.</p>";
   if (!renderEst.hecho) { var r = document.querySelector("#tab-est tr.now"); if (r && r.scrollIntoView) { renderEst.hecho = 1; r.scrollIntoView({ block: "center" }); window.scrollTo(0, 0); } }
@@ -1224,9 +1212,9 @@ function cuadros(c) {
 }
 function tablaClientes(lista, vacio) {
   if (!lista.length) return '<p class="mut">' + vacio + "</p>";
-  return '<div class="scroll"><table><thead><tr><th>Cliente</th><th>Consultor</th><th>Ingreso</th><th>Encuestas</th><th class="num">Sin avisar</th><th>Etapa en GHL</th></tr></thead><tbody>' + lista.map(function (c) {
+  return '<div class="scroll"><table><thead><tr><th>Cliente</th><th>Ingreso</th><th>Encuestas</th><th class="num">Sin avisar</th><th>Etapa en GHL</th></tr></thead><tbody>' + lista.map(function (c) {
     var sin = c.eventos.filter(function (e) { return !e.rec && !e.historico && !e.avisos[0]; }).length;
-    return '<tr><td><button type="button" class="pillbtn" data-act="open-client" data-ci="' + c.i + '">' + esc(c.nombre) + "</button></td><td>" + esc(c.consultor || "Sin asignar") + "</td><td>" + fmtD(c.ingreso) + "</td><td>" + cuadros(c) + '</td><td class="num">' + sin + "</td><td>" + esc(c.etapa || "(no está en GHL)") + "</td></tr>";
+    return '<tr><td><button type="button" class="pillbtn" data-act="open-client" data-ci="' + c.i + '">' + esc(c.nombre) + "</button></td><td>" + fmtD(c.ingreso) + "</td><td>" + cuadros(c) + '</td><td class="num">' + sin + "</td><td>" + esc(c.etapa || "(no está en GHL)") + "</td></tr>";
   }).join("") + "</tbody></table></div>";
 }
 function conexiones() {
@@ -1271,7 +1259,7 @@ function renderPla() {
   var rev = function (a) { return a.slice().reverse().slice(0, 200); };
   var body = "";
   if (S.sheet === "av") body = hojaTabla(["Fecha y hora", "Cliente", "Email", "Encuesta", "Aviso", "Fecha de envío", "Usuario", "Nota", "Estado"], rev(E.avisos).map(function (r) { return [r.ts, r.cliente, r.email || "(sin email)", r.enc, r.aviso, r.fecha, r.usuario, r.nota, r.estado]; }), "Una fila por cada click en “Aviso enviado”. Se muestran las últimas 200 de " + E.avisos.length + ".");
-  if (S.sheet === "rc") body = hojaTabla(["Fecha recibida", "Cliente", "Email", "Encuesta", "Consultor", "Debía enviarse", "Días hasta recibirla", "Etapa en GHL ese día", "Origen", "Usuario", "Estado"], rev(E.recibidas).map(function (r) { return [r.fecha, r.cliente, r.email || "(sin email)", r.enc, r.consultor, r.debia, r.dias, r.etapa, r.origen, r.usuario, r.estado]; }), "Una fila cuando GHL detecta el formulario completo o cuando marcás “Encuesta recibida”. Se muestran las últimas 200 de " + E.recibidas.length + ".");
+  if (S.sheet === "rc") body = hojaTabla(["Fecha recibida", "Cliente", "Email", "Encuesta", "Debía enviarse", "Días hasta recibirla", "Etapa en GHL ese día", "Origen", "Usuario", "Estado"], rev(E.recibidas).map(function (r) { return [r.fecha, r.cliente, r.email || "(sin email)", r.enc, r.debia, r.dias, r.etapa, r.origen, r.usuario, r.estado]; }), "Una fila cuando GHL detecta el formulario completo o cuando marcás “Encuesta recibida”. Se muestran las últimas 200 de " + E.recibidas.length + ".");
   if (S.sheet === "nt") body = hojaTabla(["Cliente", "Encuesta", "Nota", "Fecha y hora", "Usuario"], rev(E.notas).map(function (r) { return [r.cliente, r.enc, r.nota, r.ts, r.usuario]; }), "Una fila por encuesta con nota.");
   if (S.sheet === "fi") body = hojaTabla(["Cliente", "Email", "Duración especial (días)", "Notas generales"], E.fichas.map(function (r) { return [r.cliente, r.email || "(sin email)", r.dias || "", r.notas || ""]; }), "Las excepciones por cliente, por ejemplo los programas de 5 meses. Lo que se calcula nunca se tipea.");
   if (S.sheet === "hi") body = hojaTabla(["Fecha y hora", "Quién", "Acción", "Detalle", "Origen"], HIST.map(function (r) { return [r.ts, r.usuario, r.accion, r.detalle, r.origen]; }), "Cada cambio importante deja una línea con fecha, quién lo hizo y de dónde viene. Se muestran los últimos 100.");
@@ -1338,7 +1326,6 @@ document.addEventListener("click", function (e) {
   else if (a === "salir") cerrarSesion("");
 });
 document.addEventListener("keydown", function (e) { if (e.key === "Escape" && M) cerrarModal(); });
-$("f-coach").addEventListener("change", function (e) { S.coach = e.target.value === "Todos" ? "" : e.target.value; render(); });
 $("f-q").addEventListener("input", function (e) { S.q = e.target.value.trim(); render(); });
 $("login-form").addEventListener("submit", function (e) {
   e.preventDefault();
