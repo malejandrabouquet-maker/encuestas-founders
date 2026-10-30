@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- PORTAL-ENCUESTAS-V1-2-0 -->
+<!-- PORTAL-ENCUESTAS-V1-3-0 -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -340,7 +340,7 @@ var Calc = (function () {
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-const CALC_VERSION = "1.1.0";
+const CALC_VERSION = "1.2.0";
 const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -587,7 +587,9 @@ function construirModelo(entrada) {
       if (buenas.length) elegido = buenas[0];
       alertas.push({ t: "dup", clave, txt: `Aparece ${filas.length} veces en el Excel de Mel (filas ${filas.map((r) => r.fila).join(", ")}). Se usa la fila ${elegido.fila}.` });
     }
-    clientes.push({ ...elegido, ficha, cortes: null, eventos: [], opp: null, etapa: "", manual: "", bloqueado: false, ghlIdDesconocido: false });
+    // el inicio del programa se puede ajustar a mano por cliente (ficha); si no, vale la fecha de ingreso del Excel
+    const inicio = ficha && ficha.inicio ? parseFecha(ficha.inicio) : null;
+    clientes.push({ ...elegido, ingresoExcel: elegido.ingreso, ingreso: inicio || elegido.ingreso, inicioEspecial: !!inicio, ficha, cortes: null, eventos: [], opp: null, etapa: "", manual: "", bloqueado: false, ghlIdDesconocido: false });
   });
 
   // 2. oportunidades de GHL
@@ -1052,6 +1054,11 @@ function formDur(c, extraClase) {
   var dias = c.cortes ? " Las encuestas caen en los días " + c.cortes.cortes.join(", ") + "." : "";
   return '<p class="mut" style="margin-bottom:8px">Duración: ' + esc(cur) + "." + dias + '</p><div class="durform ' + (extraClase || "") + '" data-clave="' + esc(c.clave) + '" data-nombre="' + esc(c.nombre) + '" data-email="' + esc(c.email) + '"><select aria-label="Duración del programa"><option value="120">M1, 4 meses (120 días)</option><option value="180">M2, 6 meses (180 días)</option><option value="365">1 año (365 días)</option><option value="150">5 meses (150 días)</option><option value="0">Otra cantidad de días</option></select><input type="number" min="30" max="730" placeholder="Días" aria-label="Otra cantidad de días"><button type="button" class="btn small primary" data-act="dur">Guardar duración</button>' + (c.cortes && c.cortes.especial ? '<button type="button" class="link" data-act="dur-reset">Volver al estándar</button>' : "") + "</div>";
 }
+function formInicio(c) {
+  var cur = c.inicioEspecial ? "Ajustado a mano al " + fmtL(c.ingreso) + ". En el Excel figura el " + fmtD(c.ingresoExcel) + "." : "Se toma la fecha de ingreso del Excel: " + fmtL(c.ingreso) + ".";
+  return '<p class="mut" style="margin-bottom:8px">' + cur + " Si este cliente empieza otro día, cambiá la fecha y las 3 encuestas se corren solas.</p>" +
+    '<div class="durform" data-clave="' + esc(c.clave) + '" data-nombre="' + esc(c.nombre) + '" data-email="' + esc(c.email) + '"><input type="date" aria-label="Inicio del programa" style="width:170px" value="' + (c.inicioEspecial ? c.ingreso : "") + '"><button type="button" class="btn small primary" data-act="ini">Guardar inicio</button>' + (c.inicioEspecial ? '<button type="button" class="link" data-act="ini-reset">Volver a la fecha del Excel</button>' : "") + "</div>";
+}
 function modalEv(ev) {
   var c = MO.clientes[ev.i], st = C.estadoEvento(ev, c), exp = c.esperada;
   var corrida = ev.shown !== ev.calc;
@@ -1084,10 +1091,11 @@ function modalEv(ev) {
   var prog = c.cortes ? c.cortes.etiqueta + ", " + c.cortes.dias + " días" : esc(c.programa || "(vacío)");
   return '<div class="mhd"><div><span class="pill s-' + st + '"><i class="glyph"></i>' + ROT[st] + '</span><h2 id="m-title">Encuesta ' + ev.n + " de " + esc(c.nombre) + '</h2></div><div class="acts">' + (M.back ? '<button type="button" class="btn small" data-act="back">Volver al día</button>' : "") + '<button type="button" class="btn small" data-act="close">Cerrar</button></div></div>' +
     banner +
-    '<div class="grid2"><div><span>Email</span><b>' + (c.email ? esc(c.email) : "Sin email en el Excel") + "</b></div><div><span>Programa</span><b>" + prog + "</b></div><div><span>Fecha de ingreso</span><b>" + fmtL(c.ingreso) + "</b></div><div><span>Fecha calculada (día " + ev.dia + ")</span><b>" + fmtL(ev.calc) + "</b></div><div><span>Se envía el</span><b>" + fmtL(ev.shown) + "</b>" + (porque ? "<span>" + porque + "</span>" : "") + "</div></div>" +
+    '<div class="grid2"><div><span>Email</span><b>' + (c.email ? esc(c.email) : "Sin email en el Excel") + "</b></div><div><span>Programa</span><b>" + prog + "</b></div><div><span>" + (c.inicioEspecial ? "Inicio del programa (ajustado)" : "Fecha de ingreso") + "</span><b>" + fmtL(c.ingreso) + "</b>" + (c.inicioEspecial ? "<span>En el Excel figura el " + fmtD(c.ingresoExcel) + "</span>" : "") + "</div><div><span>Fecha calculada (día " + ev.dia + ")</span><b>" + fmtL(ev.calc) + "</b></div><div><span>Se envía el</span><b>" + fmtL(ev.shown) + "</b>" + (porque ? "<span>" + porque + "</span>" : "") + "</div></div>" +
     '<div class="msec"><h3>Avisos y recepción</h3>' + filas + filaRec + "</div>" +
     '<div class="msec"><h3>Pipeline “Encuestas de Satisfacción” en GHL</h3>' + caja + "</div>" +
     '<div class="msec"><h3>Nota de esta encuesta</h3><textarea id="note-input" aria-label="Nota de esta encuesta" placeholder="Por ejemplo: pidió que se la mandemos por WhatsApp">' + esc(ev.nota) + '</textarea><div class="acts" style="margin-top:8px"><button type="button" class="btn small primary" data-act="save-note" data-ev="' + ev.id + '">Guardar nota</button>' + (ev.notaTs ? '<span class="mut" style="font-size:13px">Guardada el ' + esc(ev.notaTs) + (ev.notaUser ? " por " + esc(ev.notaUser) : "") + "</span>" : "") + "</div></div>" +
+    '<div class="msec"><h3>Inicio del programa</h3>' + formInicio(c) + "</div>" +
     '<div class="msec"><h3>Duración del programa</h3>' + formDur(c) + "</div>";
 }
 
@@ -1101,6 +1109,7 @@ function guardada(nombre, d) {
   if (nombre === "marcarRecibida") return hay("recibidas", function (x) { return x.clave === d.clave && +x.enc === enc; });
   if (nombre === "deshacerRecibida") return !hay("recibidas", function (x) { return x.clave === d.clave && +x.enc === enc; });
   if (nombre === "guardarNota") return E.notas.some(function (x) { return x.clave === d.clave && +x.enc === enc && String(x.nota || "") === String(d.nota || "").trim(); });
+  if (nombre === "fijarInicio") return E.fichas.some(function (x) { return x.clave === d.clave && String(x.inicio || "") === String(d.fecha || ""); }) || (!d.fecha && !E.fichas.some(function (x) { return x.clave === d.clave && x.inicio; }));
   if (nombre === "fijarDuracion") return E.fichas.some(function (x) { return x.clave === d.clave && (+x.dias || 0) === (+d.dias || 0); }) || (!+d.dias && !E.fichas.some(function (x) { return x.clave === d.clave && +x.dias; }));
   return true;
 }
@@ -1175,6 +1184,14 @@ function accionDuracion(form, reset) {
     var f = E.fichas.filter(function (x) { return x.clave === clave; })[0];
     if (f) f.dias = dias; else E.fichas.push({ clave: clave, cliente: form.dataset.nombre, email: form.dataset.email, dias: dias, notas: "" });
   }, dias ? "Duración guardada: " + dias + " días" : "Duración estándar restaurada");
+}
+function accionInicio(form, reset) {
+  var clave = form.dataset.clave, fecha = reset ? "" : form.querySelector("input").value;
+  if (!reset && !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { toast("Elegí la fecha de inicio del programa."); return; }
+  ejecutar("fijarInicio", { clave: clave, cliente: form.dataset.nombre, email: form.dataset.email, fecha: fecha }, function () {
+    var f = E.fichas.filter(function (x) { return x.clave === clave; })[0];
+    if (f) f.inicio = fecha; else E.fichas.push({ clave: clave, cliente: form.dataset.nombre, email: form.dataset.email, dias: 0, notas: "", inicio: fecha });
+  }, fecha ? "Inicio ajustado al " + fmtD(fecha) : "Volvió la fecha del Excel");
 }
 function abrirCliente(ci) {
   var c = MO.clientes[ci];
@@ -1261,7 +1278,7 @@ function renderPla() {
   if (S.sheet === "av") body = hojaTabla(["Fecha y hora", "Cliente", "Email", "Encuesta", "Aviso", "Fecha de envío", "Usuario", "Nota", "Estado"], rev(E.avisos).map(function (r) { return [r.ts, r.cliente, r.email || "(sin email)", r.enc, r.aviso, r.fecha, r.usuario, r.nota, r.estado]; }), "Una fila por cada click en “Aviso enviado”. Se muestran las últimas 200 de " + E.avisos.length + ".");
   if (S.sheet === "rc") body = hojaTabla(["Fecha recibida", "Cliente", "Email", "Encuesta", "Debía enviarse", "Días hasta recibirla", "Etapa en GHL ese día", "Origen", "Usuario", "Estado"], rev(E.recibidas).map(function (r) { return [r.fecha, r.cliente, r.email || "(sin email)", r.enc, r.debia, r.dias, r.etapa, r.origen, r.usuario, r.estado]; }), "Una fila cuando GHL detecta el formulario completo o cuando marcás “Encuesta recibida”. Se muestran las últimas 200 de " + E.recibidas.length + ".");
   if (S.sheet === "nt") body = hojaTabla(["Cliente", "Encuesta", "Nota", "Fecha y hora", "Usuario"], rev(E.notas).map(function (r) { return [r.cliente, r.enc, r.nota, r.ts, r.usuario]; }), "Una fila por encuesta con nota.");
-  if (S.sheet === "fi") body = hojaTabla(["Cliente", "Email", "Duración especial (días)", "Notas generales"], E.fichas.map(function (r) { return [r.cliente, r.email || "(sin email)", r.dias || "", r.notas || ""]; }), "Las excepciones por cliente, por ejemplo los programas de 5 meses. Lo que se calcula nunca se tipea.");
+  if (S.sheet === "fi") body = hojaTabla(["Cliente", "Email", "Duración especial (días)", "Inicio del programa", "Notas generales"], E.fichas.map(function (r) { return [r.cliente, r.email || "(sin email)", r.dias || "", r.inicio ? fmtD(r.inicio) : "", r.notas || ""]; }), "Las excepciones por cliente: programas de otra duración o con inicio distinto al del Excel. Lo que se calcula nunca se tipea.");
   if (S.sheet === "hi") body = hojaTabla(["Fecha y hora", "Quién", "Acción", "Detalle", "Origen"], HIST.map(function (r) { return [r.ts, r.usuario, r.accion, r.detalle, r.origen]; }), "Cada cambio importante deja una línea con fecha, quién lo hizo y de dónde viene. Se muestran los últimos 100.");
   if (S.sheet === "cf") body = hojaTabla(["Parámetro", "Valor"], [
     ["Fecha de arranque", fmtD(E.config.arranque)],
@@ -1316,6 +1333,8 @@ document.addEventListener("click", function (e) {
   else if (a === "save-note") accionNota(EVM[el.dataset.ev]);
   else if (a === "dur") accionDuracion(el.closest(".durform"), false);
   else if (a === "dur-reset") accionDuracion(el.closest(".durform"), true);
+  else if (a === "ini") accionInicio(el.closest(".durform"), false);
+  else if (a === "ini-reset") accionInicio(el.closest(".durform"), true);
   else if (a === "open-client") abrirCliente(Number(el.dataset.ci));
   else if (a === "stat") { S.stat = el.dataset.m; render(); }
   else if (a === "sheet") { S.sheet = el.dataset.s; render(); }
