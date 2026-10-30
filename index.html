@@ -1,5 +1,5 @@
-<!doctype html>
-<!-- PORTAL-ENCUESTAS-V1-3-0 -->
+ <!doctype html>
+<!-- PORTAL-ENCUESTAS-V1-4-0 -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -265,6 +265,7 @@ td .pillbtn{background:none;border:0;padding:0;font-weight:600;text-decoration:u
     <button type="button" data-act="tab" data-tab="cal" aria-current="page">Calendario</button>
     <button type="button" data-act="tab" data-tab="est">Estadísticas</button>
     <button type="button" data-act="tab" data-tab="tab">Tablero de seguimiento</button>
+    <button type="button" data-act="tab" data-tab="cli">Clientes</button>
     <button type="button" data-act="tab" data-tab="pla">Planilla de datos</button>
   </nav>
 </header>
@@ -302,6 +303,7 @@ td .pillbtn{background:none;border:0;padding:0;font-weight:600;text-decoration:u
   </section>
   <section id="tab-est" aria-label="Estadísticas" hidden></section>
   <section id="tab-tab" aria-label="Tablero de seguimiento" hidden></section>
+  <section id="tab-cli" aria-label="Clientes" hidden></section>
   <section id="tab-pla" aria-label="Planilla de datos" hidden></section>
 </main>
 
@@ -340,7 +342,7 @@ var Calc = (function () {
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-const CALC_VERSION = "1.2.0";
+const CALC_VERSION = "1.3.0";
 const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -742,7 +744,8 @@ function construirModelo(entrada) {
   });
   tareasExtra.sort((a, b) => a.dias - b.dias || (a.id < b.id ? -1 : 1));
 
-  const listos = clientes.filter((c) => !c.manual && c.eventos.length && c.eventos.every((e) => e.rec) && c.eventos.some((e) => !e.historico || e.rec));
+  // listos para pasar a Completado: GHL ya los tiene en "Recibida Encuesta 3", o todas sus encuestas figuran recibidas
+  const listos = clientes.filter((c) => !c.manual && c.eventos.length && (c.etapa === "Recibida Encuesta 3" || c.eventos.every((e) => e.rec)));
 
   return { version: CALC_VERSION, hoy, config: cfg, ghlOk, clientes, eventos, vivos, alertas, detectadas, soloGhl, pendientes, tareasExtra, listos };
 }
@@ -833,7 +836,7 @@ function gLoc(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* nada */
 function lLoc(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
 
 /* ---------- estado ---------- */
-var S = { tab: "cal", view: "week", cursor: null, q: "", stat: "mes", sheet: "av", usuario: "" };
+var S = { tab: "cal", view: "week", cursor: null, q: "", qc: "", stat: "mes", sheet: "av", usuario: "" };
 var E = null, MO = null, EVM = {}, FU = null, PLA = "", HIST = [];
 var pw = "", ultimaCarga = 0, cargando = false, enCurso = 0, M = null, errorFijo = "", errorAccion = "";
 var intentadas = {};
@@ -1196,7 +1199,7 @@ function accionInicio(form, reset) {
 function abrirCliente(ci) {
   var c = MO.clientes[ci];
   if (!c || !c.eventos.length) return;
-  var ev = c.eventos.filter(function (e) { return !e.rec && !e.historico; })[0] || c.eventos.filter(function (e) { return !e.historico; })[0] || c.eventos[0];
+  var ev = c.eventos.filter(function (e) { return !e.rec && !e.historico; })[0] || c.eventos.filter(function (e) { return !e.historico; })[0] || c.eventos[c.eventos.length - 1];
   abrirModal({ type: "ev", id: ev.id, back: null });
 }
 
@@ -1267,6 +1270,33 @@ function renderTab() {
   $("tab-tab").innerHTML = html;
 }
 
+/* ---------- clientes ---------- */
+function cuadrosCli(c) {
+  var prog = C.progresoGhl(c.etapa);
+  return c.eventos.map(function (ev) {
+    var st = C.estadoEvento(ev, c), recGhl = !ev.rec && prog != null && ev.n <= prog, clase = recGhl ? "rec" : st;
+    var t = "Encuesta " + ev.n + ", " + fmtS(ev.shown) + ": " + (recGhl ? "recibida según GHL" : ROT[st]) + (ev.historico ? " (anterior al arranque)" : "");
+    return '<span class="sq s-' + clase + (ev.historico ? " hist" : "") + '" title="' + t + '">' + ev.n + "</span>";
+  }).join("");
+}
+function tablaCli() {
+  var q = (S.qc || "").toLowerCase();
+  var lista = MO.clientes.filter(function (c) { return !q || (c.nombre + " " + c.email).toLowerCase().indexOf(q) >= 0; });
+  $("cli-n").textContent = lista.length + " de " + MO.clientes.length + " clientes" + (lista.length > 200 ? ". Se muestran los primeros 200: afiná la búsqueda." : ".");
+  if (!lista.length) { $("cli-t").innerHTML = '<p class="mut">No hay clientes con ese nombre o email.</p>'; return; }
+  $("cli-t").innerHTML = '<div class="scroll tall"><table><thead><tr><th>Cliente</th><th>Email</th><th>Inicio</th><th>Programa</th><th>Etapa en GHL</th><th>Encuestas</th></tr></thead><tbody>' + lista.slice(0, 200).map(function (c) {
+    var nombre = c.eventos.length ? '<button type="button" class="pillbtn" data-act="open-client" data-ci="' + c.i + '">' + esc(c.nombre) + "</button>" : esc(c.nombre);
+    return "<tr><td>" + nombre + "</td><td>" + esc(c.email || "(sin email)") + "</td><td>" + (c.ingreso ? fmtD(c.ingreso) + (c.inicioEspecial ? " (ajustado)" : "") : "(sin fecha)") + "</td><td>" + esc(c.cortes ? c.cortes.etiqueta : (c.programa || "(vacío)")) + "</td><td>" + esc(c.etapa || (MO.ghlOk ? "(no está en GHL)" : "(sin datos de GHL)")) + "</td><td>" + (c.eventos.length ? cuadrosCli(c) : '<span class="mut">sin fechas</span>') + "</td></tr>";
+  }).join("") + "</tbody></table></div>";
+}
+function renderCli() {
+  if (!$("cli-q")) {
+    $("tab-cli").innerHTML = '<div class="panel"><h2>Clientes</h2><p class="sub">Todos los clientes del Excel de Mel, también los que ya pasaron o terminaron. Buscá por nombre o email y tocá el nombre para abrir sus encuestas.</p><div class="filters"><label>Buscar cliente<input id="cli-q" type="search" placeholder="Nombre o email" autocomplete="off"></label></div><p id="cli-n" class="mut" style="margin:10px 0"></p><div id="cli-t"></div></div>';
+    $("cli-q").value = S.qc;
+  }
+  tablaCli();
+}
+
 /* ---------- planilla ---------- */
 function hojaTabla(cols, filas, nota) {
   return '<div class="scroll tall"><table><thead><tr><th class="rn"></th>' + cols.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr></thead><tbody>" + filas.map(function (r, i) { return '<tr><td class="rn">' + (i + 1) + "</td>" + r.map(function (v) { return "<td>" + esc(v) + "</td>"; }).join("") + "</tr>"; }).join("") + "</tbody></table></div>" + (nota ? '<p class="foot">' + nota + "</p>" : "");
@@ -1297,7 +1327,7 @@ function renderPla() {
 /* ---------- pantalla ---------- */
 function setTab(t) {
   S.tab = t;
-  ["cal", "est", "tab", "pla"].forEach(function (x) { $("tab-" + x).hidden = x !== t; });
+  ["cal", "est", "tab", "cli", "pla"].forEach(function (x) { $("tab-" + x).hidden = x !== t; });
   document.querySelectorAll(".tabs button").forEach(function (b) { if (b.dataset.tab === t) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
   render();
   window.scrollTo(0, 0);
@@ -1309,6 +1339,7 @@ function render() {
   if (S.tab === "cal") renderCal();
   if (S.tab === "est") renderEst();
   if (S.tab === "tab") renderTab();
+  if (S.tab === "cli") renderCli();
   if (S.tab === "pla") renderPla();
   if (M) renderModal();
 }
@@ -1346,6 +1377,7 @@ document.addEventListener("click", function (e) {
 });
 document.addEventListener("keydown", function (e) { if (e.key === "Escape" && M) cerrarModal(); });
 $("f-q").addEventListener("input", function (e) { S.q = e.target.value.trim(); render(); });
+document.addEventListener("input", function (e) { if (e.target && e.target.id === "cli-q" && MO) { S.qc = e.target.value.trim(); tablaCli(); } });
 $("login-form").addEventListener("submit", function (e) {
   e.preventDefault();
   var v = $("pw-in").value;
