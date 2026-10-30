@@ -1,11 +1,11 @@
-// PORTAL-ENCUESTAS-V1-3-0
+// PORTAL-ENCUESTAS-V1-4-0
 // calculo.mjs
 // Toda la lógica de negocio del portal de encuestas. Es un módulo puro:
 // no lee planillas, no llama a GHL y no toca la pantalla. Recibe datos y devuelve resultados.
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-export const CALC_VERSION = "1.2.0";
+export const CALC_VERSION = "1.3.0";
 export const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -407,7 +407,8 @@ export function construirModelo(entrada) {
   });
   tareasExtra.sort((a, b) => a.dias - b.dias || (a.id < b.id ? -1 : 1));
 
-  const listos = clientes.filter((c) => !c.manual && c.eventos.length && c.eventos.every((e) => e.rec) && c.eventos.some((e) => !e.historico || e.rec));
+  // listos para pasar a Completado: GHL ya los tiene en "Recibida Encuesta 3", o todas sus encuestas figuran recibidas
+  const listos = clientes.filter((c) => !c.manual && c.eventos.length && (c.etapa === "Recibida Encuesta 3" || c.eventos.every((e) => e.rec)));
 
   return { version: CALC_VERSION, hoy, config: cfg, ghlOk, clientes, eventos, vivos, alertas, detectadas, soloGhl, pendientes, tareasExtra, listos };
 }
