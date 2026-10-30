@@ -1,11 +1,11 @@
-// PORTAL-ENCUESTAS-V1-1-0
+// PORTAL-ENCUESTAS-V1-3-0
 // calculo.mjs
 // Toda la lógica de negocio del portal de encuestas. Es un módulo puro:
 // no lee planillas, no llama a GHL y no toca la pantalla. Recibe datos y devuelve resultados.
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-export const CALC_VERSION = "1.1.0";
+export const CALC_VERSION = "1.2.0";
 export const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -252,7 +252,9 @@ export function construirModelo(entrada) {
       if (buenas.length) elegido = buenas[0];
       alertas.push({ t: "dup", clave, txt: `Aparece ${filas.length} veces en el Excel de Mel (filas ${filas.map((r) => r.fila).join(", ")}). Se usa la fila ${elegido.fila}.` });
     }
-    clientes.push({ ...elegido, ficha, cortes: null, eventos: [], opp: null, etapa: "", manual: "", bloqueado: false, ghlIdDesconocido: false });
+    // el inicio del programa se puede ajustar a mano por cliente (ficha); si no, vale la fecha de ingreso del Excel
+    const inicio = ficha && ficha.inicio ? parseFecha(ficha.inicio) : null;
+    clientes.push({ ...elegido, ingresoExcel: elegido.ingreso, ingreso: inicio || elegido.ingreso, inicioEspecial: !!inicio, ficha, cortes: null, eventos: [], opp: null, etapa: "", manual: "", bloqueado: false, ghlIdDesconocido: false });
   });
 
   // 2. oportunidades de GHL
