@@ -1,11 +1,11 @@
-// PORTAL-ENCUESTAS-V1-4-0
+// PORTAL-ENCUESTAS-V1-5-0
 // calculo.mjs
 // Toda la lógica de negocio del portal de encuestas. Es un módulo puro:
 // no lee planillas, no llama a GHL y no toca la pantalla. Recibe datos y devuelve resultados.
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-export const CALC_VERSION = "1.3.0";
+export const CALC_VERSION = "1.4.0";
 export const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -191,11 +191,11 @@ export function normalizarOportunidades(lista) {
 
 // ---------- estado de cada encuesta ----------
 export function estadoEvento(ev, cliente) {
-  if (ev.rec) return "rec";
+  if (ev.rec) return ev.rec.revisada ? "rec" : "revisar"; // recibida: azul hasta que se marque como revisada
   if (cliente.etapa === "Pausa por impago") return "pausa";
   return ev.avisos.some(Boolean) ? "proc" : "nuevo";
 }
-export const ESTADO_ROTULO = { nuevo: "Nueva", proc: "En proceso", rec: "Recibida", pausa: "Pausa por impago" };
+export const ESTADO_ROTULO = { nuevo: "Nueva", proc: "En proceso", revisar: "Recibida, falta revisar", rec: "Recibida y revisada", pausa: "Pausa por impago" };
 
 function etapaEsperada(c, hoy) {
   if (!c.eventos.length || c.manual || !c.opp) return null;
@@ -323,7 +323,7 @@ export function construirModelo(entrada) {
         }
       });
       const r = recV.filter((x) => x.clave === c.clave && Number(x.enc) === n)[0];
-      if (r) ev.rec = { fecha: parseFecha(r.fecha) || hoy, origen: r.origen || "Marcada a mano", usuario: r.usuario || "", detectada: false };
+      if (r) ev.rec = { fecha: parseFecha(r.fecha) || hoy, origen: r.origen || "Marcada a mano", usuario: r.usuario || "", detectada: false, revisada: String(r.revisada || "").trim() ? parseFecha(r.revisada) || hoy : null, revisadaPor: r.revisadapor || "" };
       const nt = notasPor.get(c.clave + "#" + n);
       if (nt && nt.nota) {
         ev.nota = nt.nota;
@@ -340,7 +340,7 @@ export function construirModelo(entrada) {
       const ev = c.eventos[Number(m[1]) - 1];
       if (ev && !ev.rec && !ev.historico && !suprimidas.has(c.clave + "#" + ev.n)) {
         const fecha = (c.opp && c.opp.cambioEtapa) || hoy;
-        ev.rec = { fecha, origen: "Detectada por GHL", usuario: "", detectada: true };
+        ev.rec = { fecha, origen: "Detectada por GHL", usuario: "", detectada: true, revisada: null, revisadaPor: "" };
         detectadas.push({ clave: c.clave, cliente: c.nombre, email: c.email, enc: ev.n, consultor: c.consultor, debia: ev.shown, fecha, etapa: c.etapa });
       }
     }
@@ -408,9 +408,12 @@ export function construirModelo(entrada) {
   tareasExtra.sort((a, b) => a.dias - b.dias || (a.id < b.id ? -1 : 1));
 
   // listos para pasar a Completado: GHL ya los tiene en "Recibida Encuesta 3", o todas sus encuestas figuran recibidas
+  // recibidas que todavía no se revisaron (portal, Slack y Brain)
+  const porRevisar = vivos.filter((e) => e.rec && !e.rec.revisada).map((e) => ({ id: e.id, fecha: e.rec.fecha, detectada: e.rec.detectada }));
+  porRevisar.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
   const listos = clientes.filter((c) => !c.manual && c.eventos.length && (c.etapa === "Recibida Encuesta 3" || c.eventos.every((e) => e.rec)));
 
-  return { version: CALC_VERSION, hoy, config: cfg, ghlOk, clientes, eventos, vivos, alertas, detectadas, soloGhl, pendientes, tareasExtra, listos };
+  return { version: CALC_VERSION, hoy, config: cfg, ghlOk, clientes, eventos, vivos, alertas, detectadas, soloGhl, pendientes, tareasExtra, porRevisar, listos };
 }
 
 // ---------- estadísticas ----------
