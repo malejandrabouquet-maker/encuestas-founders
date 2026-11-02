@@ -1,5 +1,5 @@
- <!doctype html>
-<!-- PORTAL-ENCUESTAS-V1-4-0 -->
+<!doctype html>
+<!-- PORTAL-ENCUESTAS-V1-5-0 -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -19,6 +19,7 @@
   --nuevo-bg:#E4E7EC;--nuevo-ink:#2A3441;--nuevo-bd:#7F8A9B;
   --proc-bg:#FFE48A;--proc-ink:#453200;--proc-bd:#C09000;
   --rec-bg:#BBE7C5;--rec-ink:#0D4425;--rec-bd:#2A9154;
+  --revisar-bg:#BCD6F8;--revisar-ink:#0A2D5E;--revisar-bd:#2F6FD1;
   --pausa-bg:#F5B7B1;--pausa-ink:#62100A;--pausa-bd:#BD352A;
 }
 @media (prefers-color-scheme: dark){
@@ -29,6 +30,7 @@
     --nuevo-bg:#2A313B;--nuevo-ink:#D6DDE8;--nuevo-bd:#7C8797;
     --proc-bg:#5A4700;--proc-ink:#FFE9A8;--proc-bd:#E3B400;
     --rec-bg:#14502C;--rec-ink:#C9F2D5;--rec-bd:#4CC27C;
+    --revisar-bg:#1C3E6D;--revisar-ink:#D2E4FF;--revisar-bd:#6EA8FF;
     --pausa-bg:#6E1D18;--pausa-ink:#FFD6D2;--pausa-bd:#F0766C;
   }
 }
@@ -39,6 +41,7 @@
   --nuevo-bg:#2A313B;--nuevo-ink:#D6DDE8;--nuevo-bd:#7C8797;
   --proc-bg:#5A4700;--proc-ink:#FFE9A8;--proc-bd:#E3B400;
   --rec-bg:#14502C;--rec-ink:#C9F2D5;--rec-bd:#4CC27C;
+    --revisar-bg:#1C3E6D;--revisar-ink:#D2E4FF;--revisar-bd:#6EA8FF;
   --pausa-bg:#6E1D18;--pausa-ink:#FFD6D2;--pausa-bd:#F0766C;
 }
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
@@ -83,12 +86,14 @@ main{max-width:1340px;margin:0 auto;padding:16px 20px 64px}
 .s-nuevo{--x-bg:var(--nuevo-bg);--x-ink:var(--nuevo-ink);--x-bd:var(--nuevo-bd)}
 .s-proc{--x-bg:var(--proc-bg);--x-ink:var(--proc-ink);--x-bd:var(--proc-bd)}
 .s-rec{--x-bg:var(--rec-bg);--x-ink:var(--rec-ink);--x-bd:var(--rec-bd)}
+.s-revisar{--x-bg:var(--revisar-bg);--x-ink:var(--revisar-ink);--x-bd:var(--revisar-bd)}
 .s-pausa{--x-bg:var(--pausa-bg);--x-ink:var(--pausa-ink);--x-bd:var(--pausa-bd)}
-.pill.s-nuevo,.pill.s-proc,.pill.s-rec,.pill.s-pausa{background:var(--x-bg);color:var(--x-ink);border-color:var(--x-bd);font-weight:600}
+.pill.s-nuevo,.pill.s-proc,.pill.s-rec,.pill.s-revisar,.pill.s-pausa{background:var(--x-bg);color:var(--x-ink);border-color:var(--x-bd);font-weight:600}
 .glyph{flex:none;width:13px;height:13px;border-radius:50%;border:2px solid currentColor;display:inline-block;position:relative}
 .s-proc .glyph{background:linear-gradient(90deg,currentColor 50%,transparent 50%)}
 .s-rec .glyph{background:currentColor}
 .s-rec .glyph::after{content:"";position:absolute;left:3px;top:0;width:3px;height:6px;border:solid var(--x-bg);border-width:0 2px 2px 0;transform:rotate(40deg)}
+.s-revisar .glyph{background:radial-gradient(circle,currentColor 0 36%,transparent 40%)}
 .s-pausa .glyph{border:0;border-radius:0;background:currentColor;clip-path:polygon(50% 0,100% 100%,0 100%)}
 .dots{display:inline-flex;gap:3px;vertical-align:middle}
 .dots i{width:8px;height:8px;border-radius:50%;border:1.5px solid currentColor;display:block}
@@ -293,10 +298,12 @@ td .pillbtn{background:none;border:0;padding:0;font-weight:600;text-decoration:u
     <div class="legend" aria-label="Colores">
       <span class="pill s-nuevo"><i class="glyph"></i>Nueva, sin avisos</span>
       <span class="pill s-proc"><i class="glyph"></i>En proceso, con avisos enviados</span>
-      <span class="pill s-rec"><i class="glyph"></i>Recibida</span>
+      <span class="pill s-revisar"><i class="glyph"></i>Recibida, falta revisar</span>
+      <span class="pill s-rec"><i class="glyph"></i>Recibida y revisada</span>
       <span class="pill s-pausa"><i class="glyph"></i>Cliente en pausa por impago</span>
     </div>
     <div id="hidden-note"></div>
+    <details class="due" id="revisar" open></details>
     <details class="due" id="due" open></details>
     <details class="due" id="extra" open></details>
     <div id="cal-body"></div>
@@ -342,7 +349,7 @@ var Calc = (function () {
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-const CALC_VERSION = "1.3.0";
+const CALC_VERSION = "1.4.0";
 const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -528,11 +535,11 @@ function normalizarOportunidades(lista) {
 
 // ---------- estado de cada encuesta ----------
 function estadoEvento(ev, cliente) {
-  if (ev.rec) return "rec";
+  if (ev.rec) return ev.rec.revisada ? "rec" : "revisar"; // recibida: azul hasta que se marque como revisada
   if (cliente.etapa === "Pausa por impago") return "pausa";
   return ev.avisos.some(Boolean) ? "proc" : "nuevo";
 }
-const ESTADO_ROTULO = { nuevo: "Nueva", proc: "En proceso", rec: "Recibida", pausa: "Pausa por impago" };
+const ESTADO_ROTULO = { nuevo: "Nueva", proc: "En proceso", revisar: "Recibida, falta revisar", rec: "Recibida y revisada", pausa: "Pausa por impago" };
 
 function etapaEsperada(c, hoy) {
   if (!c.eventos.length || c.manual || !c.opp) return null;
@@ -660,7 +667,7 @@ function construirModelo(entrada) {
         }
       });
       const r = recV.filter((x) => x.clave === c.clave && Number(x.enc) === n)[0];
-      if (r) ev.rec = { fecha: parseFecha(r.fecha) || hoy, origen: r.origen || "Marcada a mano", usuario: r.usuario || "", detectada: false };
+      if (r) ev.rec = { fecha: parseFecha(r.fecha) || hoy, origen: r.origen || "Marcada a mano", usuario: r.usuario || "", detectada: false, revisada: String(r.revisada || "").trim() ? parseFecha(r.revisada) || hoy : null, revisadaPor: r.revisadapor || "" };
       const nt = notasPor.get(c.clave + "#" + n);
       if (nt && nt.nota) {
         ev.nota = nt.nota;
@@ -677,7 +684,7 @@ function construirModelo(entrada) {
       const ev = c.eventos[Number(m[1]) - 1];
       if (ev && !ev.rec && !ev.historico && !suprimidas.has(c.clave + "#" + ev.n)) {
         const fecha = (c.opp && c.opp.cambioEtapa) || hoy;
-        ev.rec = { fecha, origen: "Detectada por GHL", usuario: "", detectada: true };
+        ev.rec = { fecha, origen: "Detectada por GHL", usuario: "", detectada: true, revisada: null, revisadaPor: "" };
         detectadas.push({ clave: c.clave, cliente: c.nombre, email: c.email, enc: ev.n, consultor: c.consultor, debia: ev.shown, fecha, etapa: c.etapa });
       }
     }
@@ -745,9 +752,12 @@ function construirModelo(entrada) {
   tareasExtra.sort((a, b) => a.dias - b.dias || (a.id < b.id ? -1 : 1));
 
   // listos para pasar a Completado: GHL ya los tiene en "Recibida Encuesta 3", o todas sus encuestas figuran recibidas
+  // recibidas que todavía no se revisaron (portal, Slack y Brain)
+  const porRevisar = vivos.filter((e) => e.rec && !e.rec.revisada).map((e) => ({ id: e.id, fecha: e.rec.fecha, detectada: e.rec.detectada }));
+  porRevisar.sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
   const listos = clientes.filter((c) => !c.manual && c.eventos.length && (c.etapa === "Recibida Encuesta 3" || c.eventos.every((e) => e.rec)));
 
-  return { version: CALC_VERSION, hoy, config: cfg, ghlOk, clientes, eventos, vivos, alertas, detectadas, soloGhl, pendientes, tareasExtra, listos };
+  return { version: CALC_VERSION, hoy, config: cfg, ghlOk, clientes, eventos, vivos, alertas, detectadas, soloGhl, pendientes, tareasExtra, porRevisar, listos };
 }
 
 // ---------- estadísticas ----------
@@ -814,7 +824,7 @@ var C = Calc;
 var API = "/api/portal";
 var DOW = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
 var MESN = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-var ROT = { nuevo: "Nueva", proc: "En proceso", rec: "Recibida", pausa: "Pausa por impago" };
+var ROT = { nuevo: "Nueva", proc: "En proceso", revisar: "Recibida, falta revisar", rec: "Recibida y revisada", pausa: "Pausa por impago" };
 var ALBL = { etapa: "Etapa distinta", nr: "Sin respuesta", mail: "Sin email", prog: "Programa", fecha: "Fecha de ingreso", dup: "Repetido en Excel", dupGhl: "Repetido en GHL", sinGhl: "Falta en GHL", soloGhl: "Solo en GHL", etapaDesc: "Etapa desconocida" };
 
 function $(id) { return document.getElementById(id); }
@@ -1025,9 +1035,17 @@ function renderCal() {
     var txt = "Aviso " + p.k + ": " + (p.dias === 0 ? "toca hoy" : "vencido hace " + p.dias + (p.dias === 1 ? " día" : " días"));
     return chip(EVM[p.id], false, txt);
   }).join("") + "</div>" : '<p class="empty">No hay avisos pendientes.</p>');
+  renderRevisar();
   renderExtra();
 }
 
+function renderRevisar() {
+  var lista = MO.porRevisar.filter(function (r) { return visibleEv(EVM[r.id]); });
+  $("revisar").innerHTML = '<summary>Recibidas por revisar <span class="count">' + lista.length + "</span></summary>" +
+    (lista.length ? '<p class="mut" style="padding:0 14px 8px;font-size:13.5px">Ya llegaron, pero todavía no las revisaste. Abrí cada una, actualizá el portal, marcala en Slack, subila al Brain y tocá “Marcar como revisada”.</p><div class="due-list">' + lista.map(function (r) {
+      return chip(EVM[r.id], false, "Recibida el " + fmtDM(r.fecha));
+    }).join("") + "</div>" : '<p class="empty">No hay recibidas por revisar.</p>');
+}
 function renderExtra() {
   var lista = MO.tareasExtra.filter(function (t) { var ev = EVM[t.id]; return visibleEv(ev); });
   $("extra").innerHTML = '<summary>Tareas extra: última encuesta vencida que nunca se envió <span class="count">' + lista.length + "</span></summary>" +
@@ -1077,7 +1095,12 @@ function modalEv(ev) {
   var origen = ev.rec ? (ev.rec.detectada ? "detectada por GHL, se está guardando en la planilla" : (ev.rec.origen === "Detectada por GHL" ? "detectada por GHL" : "marcada a mano")) : "";
   var filaRec = '<div class="arow"><div><b>Encuesta recibida</b><span class="mut">' + (ev.rec ? "Recibida el " + fmtL(ev.rec.fecha) + " (" + origen + ")" : "Cuando el cliente completa el formulario") + '</span></div><div class="acts">' +
     (ev.rec ? '<span class="done">Encuesta recibida</span><button type="button" class="link" data-act="undo-rec" data-ev="' + ev.id + '">Deshacer</button>' : '<button type="button" class="btn ok" data-act="rec" data-ev="' + ev.id + '">Encuesta recibida</button>') + "</div></div>";
+  if (ev.rec) {
+    filaRec += '<div class="arow"><div><b>Revisión</b><span class="mut">' + (ev.rec.revisada ? "Revisada el " + fmtL(ev.rec.revisada) + (ev.rec.revisadaPor ? " por " + esc(ev.rec.revisadaPor) : "") : "Falta: actualizar el portal, marcarla en Slack y subirla al Brain") + '</span></div><div class="acts">' +
+      (ev.rec.revisada ? '<span class="done">Revisada</span><button type="button" class="link" data-act="undo-rev" data-ev="' + ev.id + '">Deshacer</button>' : '<button type="button" class="btn primary" data-act="rev" data-ev="' + ev.id + '">Marcar como revisada</button>') + "</div></div>";
+  }
   var banner = "";
+  if (st === "revisar") banner = '<p class="info" style="border-color:var(--revisar-bd)"><b>Falta revisar.</b> Esta encuesta ya llegó. Actualizá el portal, marcala en Slack, subila al Brain y después tocá “Marcar como revisada”.</p>';
   if (c.etapa === "Pausa por impago") banner = '<p class="warn">Cliente en Pausa por impago. Mientras dure la pausa no se envían avisos. Si se regulariza, movelo de etapa en GHL y marcá el aviso desde acá.</p>';
   else if (c.etapa === "No respondió" || c.etapa === "Abandono") banner = '<p class="info">Cliente en “' + esc(c.etapa) + "”. Esta encuesta no se muestra en el calendario mientras siga así.</p>";
   if (ev.extra) banner += '<p class="info"><b>Tarea extra.</b> Esta encuesta venció antes del arranque del portal (' + fmtD(MO.config.arranque) + ") y nunca se envió. Mandala ahora y marcá el Aviso 1.</p>";
@@ -1112,6 +1135,8 @@ function guardada(nombre, d) {
   if (nombre === "marcarRecibida") return hay("recibidas", function (x) { return x.clave === d.clave && +x.enc === enc; });
   if (nombre === "deshacerRecibida") return !hay("recibidas", function (x) { return x.clave === d.clave && +x.enc === enc; });
   if (nombre === "guardarNota") return E.notas.some(function (x) { return x.clave === d.clave && +x.enc === enc && String(x.nota || "") === String(d.nota || "").trim(); });
+  if (nombre === "marcarRevisada") return hay("recibidas", function (x) { return x.clave === d.clave && +x.enc === enc && String(x.revisada || "").trim() !== ""; });
+  if (nombre === "deshacerRevisada") return !hay("recibidas", function (x) { return x.clave === d.clave && +x.enc === enc && String(x.revisada || "").trim() !== ""; });
   if (nombre === "fijarInicio") return E.fichas.some(function (x) { return x.clave === d.clave && String(x.inicio || "") === String(d.fecha || ""); }) || (!d.fecha && !E.fichas.some(function (x) { return x.clave === d.clave && x.inicio; }));
   if (nombre === "fijarDuracion") return E.fichas.some(function (x) { return x.clave === d.clave && (+x.dias || 0) === (+d.dias || 0); }) || (!+d.dias && !E.fichas.some(function (x) { return x.clave === d.clave && +x.dias; }));
   return true;
@@ -1170,6 +1195,32 @@ function accionDeshacerRec(ev) {
   ejecutar("deshacerRecibida", { clave: c.clave, cliente: c.nombre, enc: ev.n }, function () {
     E.recibidas.forEach(function (x) { if (vigente(x) && x.clave === c.clave && +x.enc === ev.n) x.estado = "Deshecho"; });
   }, "Recepción deshecha");
+}
+function accionRevisada(ev, deshacer) {
+  var c = MO.clientes[ev.i];
+  var datos = { clave: c.clave, cliente: c.nombre, enc: ev.n };
+  var fijar = function (valor) {
+    return function () {
+      var f = E.recibidas.filter(function (x) { return vigente(x) && x.clave === c.clave && +x.enc === ev.n; })[0];
+      if (f) { f.revisada = valor ? fmtD(MO.hoy) : ""; f.revisadapor = valor ? S.usuario : ""; }
+    };
+  };
+  if (deshacer) { ejecutar("deshacerRevisada", datos, fijar(false), "Revisión deshecha"); return; }
+  if (ev.rec && ev.rec.detectada) {
+    // la recepción detectada por GHL todavía no se guardó en la planilla: se guarda primero
+    if (!S.usuario) { pedirUsuario(); return; }
+    toast("Guardando la recepción en la planilla...");
+    api("POST", { accion: "registrarDetectadas", usuario: "GHL" }).then(function (j) {
+      if (!j.ok) throw new Error(j.error || "No se pudo guardar la recepción.");
+      return api("GET", null, true);
+    }).then(function (j) {
+      if (!j.ok) throw new Error(j.error || "No se pudieron leer los datos.");
+      E = j.entrada; FU = j.fuentes; HIST = j.historial || []; recomputar(); render();
+      ejecutar("marcarRevisada", datos, fijar(true), "Encuesta marcada como revisada");
+    }).catch(function (e) { mostrarErrorAccion(traducir(e)); });
+    return;
+  }
+  ejecutar("marcarRevisada", datos, fijar(true), "Encuesta marcada como revisada");
 }
 function accionNota(ev) {
   var c = MO.clientes[ev.i], t = $("note-input").value.trim();
@@ -1256,7 +1307,7 @@ function renderTab() {
   MO.soloGhl.forEach(function (o) { al.push({ t: "soloGhl", ci: -1, txt: "“" + o.nombre + "” está en GHL (" + (o.etapa || "etapa desconocida") + ") y todavía no figura en el Excel de Mel." }); });
   var nombreAl = function (a) { return a.ci >= 0 ? MO.clientes[a.ci].nombre : (a.clave || "").replace(/^n:/, ""); };
   var card = function (n, l, st) { return '<div class="card' + (st ? " s-" + st : "") + '"><div class="n">' + n + '</div><div class="l">' + (st ? '<i class="glyph"></i>' : "") + l + "</div></div>"; };
-  var html = '<div class="cards">' + card(pau.length, "En pausa por impago", "pausa") + card(nr.length, "No respondieron", "") + card(ab.length, "Abandonaron", "") + card(al.length, "Alertas para revisar", "") + card(MO.pendientes.length, "Avisos pendientes de enviar", "") + card(MO.tareasExtra.length, "Tareas extra", "") + card(MO.listos.length, "Listos para pasar a Completado", "rec") + "</div>";
+  var html = '<div class="cards">' + card(pau.length, "En pausa por impago", "pausa") + card(nr.length, "No respondieron", "") + card(ab.length, "Abandonaron", "") + card(al.length, "Alertas para revisar", "") + card(MO.pendientes.length, "Avisos pendientes de enviar", "") + card(MO.porRevisar.length, "Recibidas por revisar", "revisar") + card(MO.tareasExtra.length, "Tareas extra", "") + card(MO.listos.length, "Listos para pasar a Completado", "rec") + "</div>";
   html += '<div class="panel"><h2>En pausa por impago</h2><p class="sub">Sus encuestas pendientes se ven en rojo en el calendario y no se envían.</p>' + tablaClientes(pau, MO.ghlOk ? "No hay clientes en pausa por impago." : "Sin conexión con GHL no se pueden ver.") + "</div>";
   html += '<div class="panel"><h2>No respondieron</h2><p class="sub">Pasaron por los 3 avisos sin respuesta. Sus encuestas pendientes no se muestran en el calendario.</p>' + tablaClientes(nr, "Nadie en este estado.") + "</div>";
   html += '<div class="panel"><h2>Abandonaron</h2><p class="sub">Dejaron el programa. Sus encuestas pendientes no se muestran en el calendario.</p>' + tablaClientes(ab, "Nadie en este estado.") + "</div>";
@@ -1362,6 +1413,8 @@ document.addEventListener("click", function (e) {
   else if (a === "rec") accionRecibida(EVM[el.dataset.ev]);
   else if (a === "undo-rec") accionDeshacerRec(EVM[el.dataset.ev]);
   else if (a === "save-note") accionNota(EVM[el.dataset.ev]);
+  else if (a === "rev") accionRevisada(EVM[el.dataset.ev], false);
+  else if (a === "undo-rev") accionRevisada(EVM[el.dataset.ev], true);
   else if (a === "dur") accionDuracion(el.closest(".durform"), false);
   else if (a === "dur-reset") accionDuracion(el.closest(".durform"), true);
   else if (a === "ini") accionInicio(el.closest(".durform"), false);
