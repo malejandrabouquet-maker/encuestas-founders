@@ -1,4 +1,4 @@
-// PORTAL-ENCUESTAS-V1-3-0
+// PORTAL-ENCUESTAS-V1-5-0
 // netlify/functions/portal.mjs
 // Es el único servidor del portal de encuestas. La página nunca habla directo con Google ni con GHL.
 //  - Pide la contraseña en el header x-password (variable DASHBOARD_PASSWORD).
@@ -25,6 +25,8 @@ const ACCIONES = {
   guardarNota: ["clave", "cliente", "enc", "nota", "usuario"],
   fijarDuracion: ["clave", "cliente", "email", "dias", "usuario"],
   fijarInicio: ["clave", "cliente", "email", "fecha", "usuario"],
+  marcarRevisada: ["clave", "cliente", "enc", "usuario"],
+  deshacerRevisada: ["clave", "cliente", "enc", "usuario"],
   registrarDetectadas: [],
 };
 
