@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- PORTAL-ENCUESTAS-V1-5-0 -->
+<!-- PORTAL-ENCUESTAS-V1-6-0 -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -251,6 +251,12 @@ td .pillbtn{background:none;border:0;padding:0;font-weight:600;text-decoration:u
 .durform select,.durform input{min-height:40px;padding:6px 10px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink)}
 .durform input{width:130px}
 .meta .btn.small{min-height:32px;padding:3px 10px}
+
+/* lista de clientes con sus 3 encuestas */
+.tab-enc td .chip{width:auto;display:inline-flex;align-items:center;min-height:32px;padding:3px 10px 3px 9px;margin:2px 4px 2px 0;font-size:13.5px}
+.tab-enc td .chip .glyph{margin-right:6px}
+.chip.hist{border-style:dashed;border-left-style:solid}
+.busq-nota{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 </style>
 </head>
@@ -1002,6 +1008,17 @@ function renderCal() {
     }
     desde = semanas[0][0]; hasta = semanas[semanas.length - 1][4];
   }
+  if (S.q) {
+    var qq = S.q.toLowerCase();
+    var enc = MO.clientes.filter(function (c) { return (c.nombre + " " + c.email).toLowerCase().indexOf(qq) >= 0; });
+    $("cal-title").textContent = "Búsqueda: " + S.q;
+    $("hidden-note").innerHTML = "";
+    $("cal-body").innerHTML = '<div class="busq-nota"><span>' + enc.length + (enc.length === 1 ? " cliente encontrado" : " clientes encontrados") + ". Tocá una encuesta para abrirla.</span><button type=\"button\" class=\"link\" data-act=\"borrar-busqueda\">Volver al calendario</button></div>" + (enc.length ? tablaClientesLista(enc, 50) : '<p class="mut">No hay clientes con ese nombre o email.</p>');
+    renderRevisar();
+    renderExtra();
+    $("due").innerHTML = "";
+    return;
+  }
   var idx = {}, ocultas = 0;
   MO.vivos.forEach(function (ev) {
     if (!visibleEv(ev) || ev.shown < desde || ev.shown > hasta) return;
@@ -1322,23 +1339,24 @@ function renderTab() {
 }
 
 /* ---------- clientes ---------- */
-function cuadrosCli(c) {
+function celdaEnc(c, ev) {
   var prog = C.progresoGhl(c.etapa);
-  return c.eventos.map(function (ev) {
-    var st = C.estadoEvento(ev, c), recGhl = !ev.rec && prog != null && ev.n <= prog, clase = recGhl ? "rec" : st;
-    var t = "Encuesta " + ev.n + ", " + fmtS(ev.shown) + ": " + (recGhl ? "recibida según GHL" : ROT[st]) + (ev.historico ? " (anterior al arranque)" : "");
-    return '<span class="sq s-' + clase + (ev.historico ? " hist" : "") + '" title="' + t + '">' + ev.n + "</span>";
-  }).join("");
+  var st = C.estadoEvento(ev, c), recGhl = !ev.rec && prog != null && ev.n <= prog, clase = recGhl ? "rec" : st;
+  var t = "Encuesta " + ev.n + ", " + fmtL(ev.shown) + ": " + (recGhl ? "recibida según GHL" : ROT[st]) + (ev.historico ? " (anterior al arranque)" : "");
+  return '<button type="button" class="chip mini s-' + clase + (ev.historico ? " hist" : "") + '" data-act="open-ev" data-ev="' + ev.id + '" title="' + esc(t) + '"><i class="glyph"></i><b>E' + ev.n + "</b>&nbsp;" + fmtDM(ev.shown) + "</button>";
+}
+function tablaClientesLista(lista, max) {
+  return '<div class="scroll tall tab-enc"><table><thead><tr><th>Cliente</th><th>Email</th><th>Etapa en GHL</th><th>Encuestas (fecha y estado)</th></tr></thead><tbody>' + lista.slice(0, max).map(function (c) {
+    var nombre = c.eventos.length ? '<button type="button" class="pillbtn" data-act="open-client" data-ci="' + c.i + '">' + esc(c.nombre) + "</button>" : esc(c.nombre);
+    return "<tr><td>" + nombre + "</td><td>" + esc(c.email || "(sin email)") + "</td><td>" + esc(c.etapa || (MO.ghlOk ? "(no está en GHL)" : "(sin datos de GHL)")) + "</td><td>" + (c.eventos.length ? c.eventos.map(function (ev) { return celdaEnc(c, ev); }).join("") : '<span class="mut">sin fechas: ' + esc(c.programa || "programa vacío") + "</span>") + "</td></tr>";
+  }).join("") + "</tbody></table></div>";
 }
 function tablaCli() {
   var q = (S.qc || "").toLowerCase();
   var lista = MO.clientes.filter(function (c) { return !q || (c.nombre + " " + c.email).toLowerCase().indexOf(q) >= 0; });
   $("cli-n").textContent = lista.length + " de " + MO.clientes.length + " clientes" + (lista.length > 200 ? ". Se muestran los primeros 200: afiná la búsqueda." : ".");
   if (!lista.length) { $("cli-t").innerHTML = '<p class="mut">No hay clientes con ese nombre o email.</p>'; return; }
-  $("cli-t").innerHTML = '<div class="scroll tall"><table><thead><tr><th>Cliente</th><th>Email</th><th>Inicio</th><th>Programa</th><th>Etapa en GHL</th><th>Encuestas</th></tr></thead><tbody>' + lista.slice(0, 200).map(function (c) {
-    var nombre = c.eventos.length ? '<button type="button" class="pillbtn" data-act="open-client" data-ci="' + c.i + '">' + esc(c.nombre) + "</button>" : esc(c.nombre);
-    return "<tr><td>" + nombre + "</td><td>" + esc(c.email || "(sin email)") + "</td><td>" + (c.ingreso ? fmtD(c.ingreso) + (c.inicioEspecial ? " (ajustado)" : "") : "(sin fecha)") + "</td><td>" + esc(c.cortes ? c.cortes.etiqueta : (c.programa || "(vacío)")) + "</td><td>" + esc(c.etapa || (MO.ghlOk ? "(no está en GHL)" : "(sin datos de GHL)")) + "</td><td>" + (c.eventos.length ? cuadrosCli(c) : '<span class="mut">sin fechas</span>') + "</td></tr>";
-  }).join("") + "</tbody></table></div>";
+  $("cli-t").innerHTML = tablaClientesLista(lista, 200);
 }
 function renderCli() {
   if (!$("cli-q")) {
@@ -1422,6 +1440,7 @@ document.addEventListener("click", function (e) {
   else if (a === "open-client") abrirCliente(Number(el.dataset.ci));
   else if (a === "stat") { S.stat = el.dataset.m; render(); }
   else if (a === "sheet") { S.sheet = el.dataset.s; render(); }
+  else if (a === "borrar-busqueda") { S.q = ""; $("f-q").value = ""; render(); }
   else if (a === "reintentar") { ocultarError(); cargar(true); }
   else if (a === "cerrar-error") { errorAccion = ""; pintarBanner(); }
   else if (a === "actualizar") cargar(true);
