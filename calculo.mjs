@@ -1,11 +1,11 @@
-// PORTAL-ENCUESTAS-V1-5-0
+// PORTAL-ENCUESTAS-V1-7-0
 // calculo.mjs
 // Toda la lógica de negocio del portal de encuestas. Es un módulo puro:
 // no lee planillas, no llama a GHL y no toca la pantalla. Recibe datos y devuelve resultados.
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-export const CALC_VERSION = "1.4.0";
+export const CALC_VERSION = "1.5.0";
 export const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -350,6 +350,18 @@ export function construirModelo(entrada) {
   clientes.forEach((c) => c.eventos.forEach((e) => eventos.push(e)));
   const vivos = eventos.filter((e) => !e.historico);
 
+  // un solo evento activo por cliente: mientras una encuesta siga abierta (con avisos y sin respuesta, o ya vencida y sin enviar),
+  // las siguientes del mismo cliente esperan. Se cierra al recibirla o cuando el cliente pasa a una etapa manual de GHL.
+  clientes.forEach((c) => {
+    let abierta = null;
+    c.eventos.forEach((ev) => {
+      ev.espera = 0;
+      if (ev.historico) return;
+      if (abierta && !c.manual) ev.espera = abierta.n;
+      if (!abierta && !ev.rec && (ev.avisos.some(Boolean) || ev.shown <= hoy)) abierta = ev;
+    });
+  });
+
   // 4. alertas
   clientes.forEach((c) => {
     if (!c.eventos.length) return;
@@ -377,7 +389,7 @@ export function construirModelo(entrada) {
   const pendientes = [];
   vivos.forEach((ev) => {
     const c = clientes[ev.i];
-    if (ev.rec || c.manual) return;
+    if (ev.rec || c.manual || ev.espera) return;
     const enviados = ev.avisos.filter(Boolean).length;
     if (enviados === 0) {
       if (ev.shown <= hoy) pendientes.push({ id: ev.id, k: 1, vence: ev.shown, dias: difDias(hoy, ev.shown) });
@@ -455,7 +467,7 @@ export function estadisticas(modelo, modo) {
     const g = grupos.get(k);
     g.d++;
     if (ev.avisos[0]) g.env++;
-    else if (c.bloqueado) g.blq++;
+    else if (c.bloqueado || ev.espera) g.blq++;
     else if (ev.shown > hoy) g.pv++;
     else g.sin++;
     if (ev.rec) g.rec++;
