@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- PORTAL-ENCUESTAS-V1-6-0 -->
+<!-- PORTAL-ENCUESTAS-V1-7-0 -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -355,7 +355,7 @@ var Calc = (function () {
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-const CALC_VERSION = "1.4.0";
+const CALC_VERSION = "1.5.0";
 const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -700,6 +700,18 @@ function construirModelo(entrada) {
   clientes.forEach((c) => c.eventos.forEach((e) => eventos.push(e)));
   const vivos = eventos.filter((e) => !e.historico);
 
+  // un solo evento activo por cliente: mientras una encuesta siga abierta (con avisos y sin respuesta, o ya vencida y sin enviar),
+  // las siguientes del mismo cliente esperan. Se cierra al recibirla o cuando el cliente pasa a una etapa manual de GHL.
+  clientes.forEach((c) => {
+    let abierta = null;
+    c.eventos.forEach((ev) => {
+      ev.espera = 0;
+      if (ev.historico) return;
+      if (abierta && !c.manual) ev.espera = abierta.n;
+      if (!abierta && !ev.rec && (ev.avisos.some(Boolean) || ev.shown <= hoy)) abierta = ev;
+    });
+  });
+
   // 4. alertas
   clientes.forEach((c) => {
     if (!c.eventos.length) return;
@@ -727,7 +739,7 @@ function construirModelo(entrada) {
   const pendientes = [];
   vivos.forEach((ev) => {
     const c = clientes[ev.i];
-    if (ev.rec || c.manual) return;
+    if (ev.rec || c.manual || ev.espera) return;
     const enviados = ev.avisos.filter(Boolean).length;
     if (enviados === 0) {
       if (ev.shown <= hoy) pendientes.push({ id: ev.id, k: 1, vence: ev.shown, dias: difDias(hoy, ev.shown) });
@@ -805,7 +817,7 @@ function estadisticas(modelo, modo) {
     const g = grupos.get(k);
     g.d++;
     if (ev.avisos[0]) g.env++;
-    else if (c.bloqueado) g.blq++;
+    else if (c.bloqueado || ev.espera) g.blq++;
     else if (ev.shown > hoy) g.pv++;
     else g.sin++;
     if (ev.rec) g.rec++;
@@ -978,7 +990,7 @@ function arrancar() {
 function pintarUsuario() { $("usuario-btn").textContent = S.usuario ? "Usuario: " + S.usuario : "Elegir usuario"; }
 
 /* ---------- calendario ---------- */
-function ocultoEv(ev) { var c = MO.clientes[ev.i]; return !ev.rec && (c.etapa === "No respondió" || c.etapa === "Abandono"); }
+function ocultoEv(ev) { var c = MO.clientes[ev.i]; return !ev.rec && (c.etapa === "No respondió" || c.etapa === "Abandono" || !!ev.espera); }
 function visibleEv(ev) {
   var c = MO.clientes[ev.i];
   if (S.q) { var q = S.q.toLowerCase(); if ((c.nombre + " " + c.email).toLowerCase().indexOf(q) < 0) return false; }
@@ -1019,10 +1031,10 @@ function renderCal() {
     $("due").innerHTML = "";
     return;
   }
-  var idx = {}, ocultas = 0;
+  var idx = {}, ocultas = 0, enEspera = 0;
   MO.vivos.forEach(function (ev) {
     if (!visibleEv(ev) || ev.shown < desde || ev.shown > hasta) return;
-    if (ocultoEv(ev)) { ocultas++; return; }
+    if (ocultoEv(ev)) { if (ev.espera) enEspera++; else ocultas++; return; }
     (idx[ev.shown] = idx[ev.shown] || []).push(ev);
   });
   Object.keys(idx).forEach(function (k) { idx[k].sort(function (a, b) { return MO.clientes[a.i].nombre.localeCompare(MO.clientes[b.i].nombre, "es"); }); });
@@ -1045,7 +1057,10 @@ function renderCal() {
     html += "</div></div>";
   }
   $("cal-body").innerHTML = html;
-  $("hidden-note").innerHTML = ocultas ? '<div class="note-hidden"><span>Se ocultan <b>' + ocultas + '</b> encuestas pendientes de clientes en “No respondió” o “Abandono” en este período.</span><button type="button" class="link" data-act="tab" data-tab="tab">Verlas en el tablero</button></div>' : "";
+  var partes = [];
+  if (ocultas) partes.push("<b>" + ocultas + "</b> de clientes en “No respondió” o “Abandono”");
+  if (enEspera) partes.push("<b>" + enEspera + "</b> que esperan a que se cierre la encuesta anterior del mismo cliente");
+  $("hidden-note").innerHTML = partes.length ? '<div class="note-hidden"><span>En este período se ocultan ' + partes.join(" y ") + ".</span>" + (ocultas ? '<button type="button" class="link" data-act="tab" data-tab="tab">Verlas en el tablero</button>' : "") + (enEspera ? '<button type="button" class="link" data-act="tab" data-tab="cli">Verlas en Clientes</button>' : "") + "</div>" : "";
 
   var due = MO.pendientes.filter(function (p) { var ev = EVM[p.id]; return visibleEv(ev) && !ocultoEv(ev); });
   $("due").innerHTML = '<summary>Para enviar hoy o atrasados <span class="count">' + due.length + "</span></summary>" + (due.length ? '<div class="due-list">' + due.map(function (p) {
@@ -1120,6 +1135,7 @@ function modalEv(ev) {
   if (st === "revisar") banner = '<p class="info" style="border-color:var(--revisar-bd)"><b>Falta revisar.</b> Esta encuesta ya llegó. Actualizá el portal, marcala en Slack, subila al Brain y después tocá “Marcar como revisada”.</p>';
   if (c.etapa === "Pausa por impago") banner = '<p class="warn">Cliente en Pausa por impago. Mientras dure la pausa no se envían avisos. Si se regulariza, movelo de etapa en GHL y marcá el aviso desde acá.</p>';
   else if (c.etapa === "No respondió" || c.etapa === "Abandono") banner = '<p class="info">Cliente en “' + esc(c.etapa) + "”. Esta encuesta no se muestra en el calendario mientras siga así.</p>";
+  if (ev.espera && !ev.rec) banner += '<p class="info"><b>En espera.</b> Esta encuesta no se pide todavía: primero se cierra la Encuesta ' + ev.espera + " de este cliente (cuando responda, o si pasa a No respondió, Abandono o Pausa). Después aparece sola en “Para enviar hoy o atrasados”.</p>";
   if (ev.extra) banner += '<p class="info"><b>Tarea extra.</b> Esta encuesta venció antes del arranque del portal (' + fmtD(MO.config.arranque) + ") y nunca se envió. Mandala ahora y marcá el Aviso 1.</p>";
   else if (ev.historico) banner += '<p class="info">Esta encuesta es anterior a la fecha de arranque del portal (' + fmtD(MO.config.arranque) + "), por eso no se exige.</p>";
   var caja;
@@ -1290,7 +1306,7 @@ function renderEst() {
   $("tab-est").innerHTML = '<div class="kpis"><div class="kpi"><div class="n">' + cur.d + '</div><div class="l">Debían enviarse en ' + mes + '</div></div><div class="kpi"><div class="n">' + cur.env + '</div><div class="l">Enviadas</div></div><div class="kpi"><div class="n">' + cur.rec + '</div><div class="l">Recibidas</div></div><div class="kpi"><div class="n">' + (pc == null ? "-" : pc + " %") + '</div><div class="l">De las enviadas, ya respondieron</div></div></div>' +
     '<div class="tools"><div class="seg" role="group" aria-label="Agrupar por">' + [["mes", "Por mes"], ["semana", "Por semana"], ["encuesta", "Por encuesta"]].map(function (o) { return '<button type="button" data-act="stat" data-m="' + o[0] + '" aria-pressed="' + (S.stat === o[0]) + '">' + o[1] + "</button>"; }).join("") + "</div></div>" +
     '<div class="scroll tall"><table><thead><tr><th class="rn"></th><th>' + etiquetas[S.stat] + '</th><th class="num">Debían enviarse</th><th class="num">Enviadas</th><th class="num">Recibidas</th><th class="num">Sin enviar</th><th class="num">Por vencer</th><th class="num">Bloqueadas</th><th class="num">% enviadas</th><th class="num">% recibidas</th></tr></thead><tbody>' + filas + fin + "</tbody></table></div>" +
-    '<p class="foot">Cada encuesta se cuenta en el período de su fecha de envío (ya corrida a día hábil). Se cuentan desde la fecha de arranque (' + fmtD(MO.config.arranque) + "). Sin enviar: ya vencieron y no tienen aviso. Por vencer: todavía no llegó su fecha. Bloqueadas: clientes en Pausa por impago, No respondió o Abandono sin aviso. % enviadas: enviadas sobre las que ya vencieron y se podían enviar. % recibidas: recibidas sobre enviadas.</p>";
+    '<p class="foot">Cada encuesta se cuenta en el período de su fecha de envío (ya corrida a día hábil). Se cuentan desde la fecha de arranque (' + fmtD(MO.config.arranque) + "). Sin enviar: ya vencieron y no tienen aviso. Por vencer: todavía no llegó su fecha. Bloqueadas: clientes en Pausa por impago, No respondió o Abandono sin aviso, y encuestas que esperan a que se cierre la anterior del mismo cliente. % enviadas: enviadas sobre las que ya vencieron y se podían enviar. % recibidas: recibidas sobre enviadas.</p>";
   if (!renderEst.hecho) { var r = document.querySelector("#tab-est tr.now"); if (r && r.scrollIntoView) { renderEst.hecho = 1; r.scrollIntoView({ block: "center" }); window.scrollTo(0, 0); } }
 }
 
@@ -1343,7 +1359,8 @@ function celdaEnc(c, ev) {
   var prog = C.progresoGhl(c.etapa);
   var st = C.estadoEvento(ev, c), recGhl = !ev.rec && prog != null && ev.n <= prog, clase = recGhl ? "rec" : st;
   var t = "Encuesta " + ev.n + ", " + fmtL(ev.shown) + ": " + (recGhl ? "recibida según GHL" : ROT[st]) + (ev.historico ? " (anterior al arranque)" : "");
-  return '<button type="button" class="chip mini s-' + clase + (ev.historico ? " hist" : "") + '" data-act="open-ev" data-ev="' + ev.id + '" title="' + esc(t) + '"><i class="glyph"></i><b>E' + ev.n + "</b>&nbsp;" + fmtDM(ev.shown) + "</button>";
+  if (ev.espera && !ev.rec) t += " (en espera: se cierra primero la Encuesta " + ev.espera + ")";
+  return '<button type="button" class="chip mini s-' + clase + (ev.historico || (ev.espera && !ev.rec) ? " hist" : "") + '" data-act="open-ev" data-ev="' + ev.id + '" title="' + esc(t) + '"><i class="glyph"></i><b>E' + ev.n + "</b>&nbsp;" + fmtDM(ev.shown) + (ev.espera && !ev.rec ? " (en espera)" : "") + "</button>";
 }
 function tablaClientesLista(lista, max) {
   return '<div class="scroll tall tab-enc"><table><thead><tr><th>Cliente</th><th>Email</th><th>Etapa en GHL</th><th>Encuestas (fecha y estado)</th></tr></thead><tbody>' + lista.slice(0, max).map(function (c) {
