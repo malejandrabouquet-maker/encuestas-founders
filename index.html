@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- PORTAL-ENCUESTAS-V1-7-0 -->
+<!-- PORTAL-ENCUESTAS-V1-8-0 -->
 <html lang="es">
 <head>
 <meta charset="utf-8">
@@ -355,7 +355,7 @@ var Calc = (function () {
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-const CALC_VERSION = "1.5.0";
+const CALC_VERSION = "1.6.0";
 const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -681,6 +681,9 @@ function construirModelo(entrada) {
         ev.notaUser = nt.usuario || "";
       }
       ev.historico = ev.shown < cfg.arranque && !ev.avisos.some(Boolean) && !ev.rec;
+      ev.calcOriginal = calc;
+      ev.shownOriginal = ev.shown;
+      ev.reprog = null;
       c.eventos.push(ev);
     });
 
@@ -692,6 +695,29 @@ function construirModelo(entrada) {
         const fecha = (c.opp && c.opp.cambioEtapa) || hoy;
         ev.rec = { fecha, origen: "Detectada por GHL", usuario: "", detectada: true, revisada: null, revisadaPor: "" };
         detectadas.push({ clave: c.clave, cliente: c.nombre, email: c.email, enc: ev.n, consultor: c.consultor, debia: ev.shown, fecha, etapa: c.etapa });
+      }
+    }
+  });
+
+  // reprogramación: la siguiente encuesta se corre según cuándo se recibió la anterior (misma separación que tiene el programa),
+  // sin pasar del último día del programa. Solo se corre hacia adelante y no se toca una encuesta que ya tiene avisos.
+  clientes.forEach((c) => {
+    if (!c.eventos.length || !c.cortes) return;
+    const fin = sumarDias(c.ingreso, c.cortes.dias);
+    for (let k = 1; k < c.eventos.length; k++) {
+      const prev = c.eventos[k - 1];
+      const ev = c.eventos[k];
+      if (!prev.rec || ev.rec || ev.avisos.some(Boolean)) continue;
+      const separacion = c.cortes.cortes[k] - c.cortes.cortes[k - 1];
+      const piso = sumarDias(prev.rec.fecha, separacion);
+      let objetivo = piso > ev.calc ? piso : ev.calc;
+      const topeado = objetivo > fin;
+      if (topeado) objetivo = fin;
+      const nuevo = diaHabil(objetivo, cfg.feriados);
+      if (nuevo > ev.shown) {
+        ev.shown = nuevo;
+        ev.reprog = { desde: prev.rec.fecha, previa: prev.n, separacion, fin, topeado, original: ev.shownOriginal };
+        ev.historico = ev.shown < cfg.arranque && !ev.avisos.some(Boolean) && !ev.rec;
       }
     }
   });
@@ -1002,7 +1028,7 @@ function chip(ev, mini, extra) {
   var enviados = ev.avisos.filter(Boolean).length;
   var dots = '<span class="dots" aria-label="Avisos enviados: ' + enviados + ' de 3">' + [0, 1, 2].map(function (j) { return '<i class="' + (ev.avisos[j] ? "on" : "") + '"></i>'; }).join("") + "</span>";
   if (mini) return '<button type="button" class="chip mini s-' + st + '" data-act="open-ev" data-ev="' + ev.id + '" title="' + esc(c.nombre) + ", Encuesta " + ev.n + ": " + ROT[st] + '"><span class="chip-top"><i class="glyph"></i><b>E' + ev.n + '</b><span class="nm">' + esc(c.nombre) + "</span></span></button>";
-  return '<button type="button" class="chip s-' + st + '" data-act="open-ev" data-ev="' + ev.id + '"><span class="chip-top"><i class="glyph"></i><b>E' + ev.n + '</b><span class="nm">' + esc(c.nombre) + '</span></span><span class="chip-sub">' + dots + (tarde ? '<span class="tag">Atrasada</span>' : "") + (extra ? "<span>" + esc(extra) + "</span>" : "") + "</span></button>";
+  return '<button type="button" class="chip s-' + st + '" data-act="open-ev" data-ev="' + ev.id + '"><span class="chip-top"><i class="glyph"></i><b>E' + ev.n + '</b><span class="nm">' + esc(c.nombre) + '</span></span><span class="chip-sub">' + dots + (tarde ? '<span class="tag">Atrasada</span>' : "") + (ev.reprog ? '<span class="tag">Reprogramada</span>' : "") + (extra ? "<span>" + esc(extra) + "</span>" : "") + "</span></button>";
 }
 function renderCal() {
   document.querySelectorAll("[data-act=view]").forEach(function (b) { b.setAttribute("aria-pressed", String(b.dataset.view === S.view)); });
@@ -1135,6 +1161,7 @@ function modalEv(ev) {
   if (st === "revisar") banner = '<p class="info" style="border-color:var(--revisar-bd)"><b>Falta revisar.</b> Esta encuesta ya llegó. Actualizá el portal, marcala en Slack, subila al Brain y después tocá “Marcar como revisada”.</p>';
   if (c.etapa === "Pausa por impago") banner = '<p class="warn">Cliente en Pausa por impago. Mientras dure la pausa no se envían avisos. Si se regulariza, movelo de etapa en GHL y marcá el aviso desde acá.</p>';
   else if (c.etapa === "No respondió" || c.etapa === "Abandono") banner = '<p class="info">Cliente en “' + esc(c.etapa) + "”. Esta encuesta no se muestra en el calendario mientras siga así.</p>";
+  if (ev.reprog) banner += '<p class="info"><b>Reprogramada.</b> La Encuesta ' + ev.reprog.previa + " se recibió el " + fmtD(ev.reprog.desde) + ", así que esta se corre " + ev.reprog.separacion + " días después de esa fecha" + (ev.reprog.topeado ? ", y queda en el último día del programa (" + fmtD(ev.reprog.fin) + ")" : "") + ". La fecha original era el " + fmtD(ev.reprog.original) + ".</p>";
   if (ev.espera && !ev.rec) banner += '<p class="info"><b>En espera.</b> Esta encuesta no se pide todavía: primero se cierra la Encuesta ' + ev.espera + " de este cliente (cuando responda, o si pasa a No respondió, Abandono o Pausa). Después aparece sola en “Para enviar hoy o atrasados”.</p>";
   if (ev.extra) banner += '<p class="info"><b>Tarea extra.</b> Esta encuesta venció antes del arranque del portal (' + fmtD(MO.config.arranque) + ") y nunca se envió. Mandala ahora y marcá el Aviso 1.</p>";
   else if (ev.historico) banner += '<p class="info">Esta encuesta es anterior a la fecha de arranque del portal (' + fmtD(MO.config.arranque) + "), por eso no se exige.</p>";
@@ -1150,7 +1177,7 @@ function modalEv(ev) {
   var prog = c.cortes ? c.cortes.etiqueta + ", " + c.cortes.dias + " días" : esc(c.programa || "(vacío)");
   return '<div class="mhd"><div><span class="pill s-' + st + '"><i class="glyph"></i>' + ROT[st] + '</span><h2 id="m-title">Encuesta ' + ev.n + " de " + esc(c.nombre) + '</h2></div><div class="acts">' + (M.back ? '<button type="button" class="btn small" data-act="back">Volver al día</button>' : "") + '<button type="button" class="btn small" data-act="close">Cerrar</button></div></div>' +
     banner +
-    '<div class="grid2"><div><span>Email</span><b>' + (c.email ? esc(c.email) : "Sin email en el Excel") + "</b></div><div><span>Programa</span><b>" + prog + "</b></div><div><span>" + (c.inicioEspecial ? "Inicio del programa (ajustado)" : "Fecha de ingreso") + "</span><b>" + fmtL(c.ingreso) + "</b>" + (c.inicioEspecial ? "<span>En el Excel figura el " + fmtD(c.ingresoExcel) + "</span>" : "") + "</div><div><span>Fecha calculada (día " + ev.dia + ")</span><b>" + fmtL(ev.calc) + "</b></div><div><span>Se envía el</span><b>" + fmtL(ev.shown) + "</b>" + (porque ? "<span>" + porque + "</span>" : "") + "</div></div>" +
+    '<div class="grid2"><div><span>Email</span><b>' + (c.email ? esc(c.email) : "Sin email en el Excel") + "</b></div><div><span>Programa</span><b>" + prog + "</b></div><div><span>" + (c.inicioEspecial ? "Inicio del programa (ajustado)" : "Fecha de ingreso") + "</span><b>" + fmtL(c.ingreso) + "</b>" + (c.inicioEspecial ? "<span>En el Excel figura el " + fmtD(c.ingresoExcel) + "</span>" : "") + "</div><div><span>Fecha calculada (día " + ev.dia + ")</span><b>" + fmtL(ev.calc) + "</b></div><div><span>Se envía el</span><b>" + fmtL(ev.shown) + "</b>" + (ev.reprog ? "<span>Reprogramada: la original era el " + fmtD(ev.reprog.original) + "</span>" : (porque ? "<span>" + porque + "</span>" : "")) + "</div></div>" +
     '<div class="msec"><h3>Avisos y recepción</h3>' + filas + filaRec + "</div>" +
     '<div class="msec"><h3>Pipeline “Encuestas de Satisfacción” en GHL</h3>' + caja + "</div>" +
     '<div class="msec"><h3>Nota de esta encuesta</h3><textarea id="note-input" aria-label="Nota de esta encuesta" placeholder="Por ejemplo: pidió que se la mandemos por WhatsApp">' + esc(ev.nota) + '</textarea><div class="acts" style="margin-top:8px"><button type="button" class="btn small primary" data-act="save-note" data-ev="' + ev.id + '">Guardar nota</button>' + (ev.notaTs ? '<span class="mut" style="font-size:13px">Guardada el ' + esc(ev.notaTs) + (ev.notaUser ? " por " + esc(ev.notaUser) : "") + "</span>" : "") + "</div></div>" +
@@ -1360,6 +1387,7 @@ function celdaEnc(c, ev) {
   var st = C.estadoEvento(ev, c), recGhl = !ev.rec && prog != null && ev.n <= prog, clase = recGhl ? "rec" : st;
   var t = "Encuesta " + ev.n + ", " + fmtL(ev.shown) + ": " + (recGhl ? "recibida según GHL" : ROT[st]) + (ev.historico ? " (anterior al arranque)" : "");
   if (ev.espera && !ev.rec) t += " (en espera: se cierra primero la Encuesta " + ev.espera + ")";
+  if (ev.reprog) t += " (reprogramada, la original era el " + fmtD(ev.reprog.original) + ")";
   return '<button type="button" class="chip mini s-' + clase + (ev.historico || (ev.espera && !ev.rec) ? " hist" : "") + '" data-act="open-ev" data-ev="' + ev.id + '" title="' + esc(t) + '"><i class="glyph"></i><b>E' + ev.n + "</b>&nbsp;" + fmtDM(ev.shown) + (ev.espera && !ev.rec ? " (en espera)" : "") + "</button>";
 }
 function tablaClientesLista(lista, max) {
