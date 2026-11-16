@@ -1,11 +1,11 @@
-// PORTAL-ENCUESTAS-V1-7-0
+// PORTAL-ENCUESTAS-V1-8-0
 // calculo.mjs
 // Toda la lógica de negocio del portal de encuestas. Es un módulo puro:
 // no lee planillas, no llama a GHL y no toca la pantalla. Recibe datos y devuelve resultados.
 // Lo usan dos lugares: la función de Netlify (servidor) y la página (index.html lleva una copia adentro).
 // Las fechas son siempre texto "AAAA-MM-DD" para que la zona horaria nunca cambie un día.
 
-export const CALC_VERSION = "1.5.0";
+export const CALC_VERSION = "1.6.0";
 export const ZONA = "America/Argentina/Buenos_Aires";
 
 // ---------- programas ----------
@@ -331,6 +331,9 @@ export function construirModelo(entrada) {
         ev.notaUser = nt.usuario || "";
       }
       ev.historico = ev.shown < cfg.arranque && !ev.avisos.some(Boolean) && !ev.rec;
+      ev.calcOriginal = calc;
+      ev.shownOriginal = ev.shown;
+      ev.reprog = null;
       c.eventos.push(ev);
     });
 
@@ -342,6 +345,29 @@ export function construirModelo(entrada) {
         const fecha = (c.opp && c.opp.cambioEtapa) || hoy;
         ev.rec = { fecha, origen: "Detectada por GHL", usuario: "", detectada: true, revisada: null, revisadaPor: "" };
         detectadas.push({ clave: c.clave, cliente: c.nombre, email: c.email, enc: ev.n, consultor: c.consultor, debia: ev.shown, fecha, etapa: c.etapa });
+      }
+    }
+  });
+
+  // reprogramación: la siguiente encuesta se corre según cuándo se recibió la anterior (misma separación que tiene el programa),
+  // sin pasar del último día del programa. Solo se corre hacia adelante y no se toca una encuesta que ya tiene avisos.
+  clientes.forEach((c) => {
+    if (!c.eventos.length || !c.cortes) return;
+    const fin = sumarDias(c.ingreso, c.cortes.dias);
+    for (let k = 1; k < c.eventos.length; k++) {
+      const prev = c.eventos[k - 1];
+      const ev = c.eventos[k];
+      if (!prev.rec || ev.rec || ev.avisos.some(Boolean)) continue;
+      const separacion = c.cortes.cortes[k] - c.cortes.cortes[k - 1];
+      const piso = sumarDias(prev.rec.fecha, separacion);
+      let objetivo = piso > ev.calc ? piso : ev.calc;
+      const topeado = objetivo > fin;
+      if (topeado) objetivo = fin;
+      const nuevo = diaHabil(objetivo, cfg.feriados);
+      if (nuevo > ev.shown) {
+        ev.shown = nuevo;
+        ev.reprog = { desde: prev.rec.fecha, previa: prev.n, separacion, fin, topeado, original: ev.shownOriginal };
+        ev.historico = ev.shown < cfg.arranque && !ev.avisos.some(Boolean) && !ev.rec;
       }
     }
   });
